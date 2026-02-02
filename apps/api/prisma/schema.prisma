@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CandidateStage {
+  INBOX
+  SHORTLIST
+  MAYBE
+  NO
+  INTERVIEW
+  OFFER
+}
+
+model Job {
+  id          Int      @id
+  title       String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candidates  Candidate[]
+  policies    ScoringPolicy[]
+}
+
+model Candidate {
+  id            Int      @id
+  jobId         Int
+  candidateName String
+  cvUrl         String
+  rawAnswers    Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  job           Job      @relation(fields: [jobId], references: [id])
+  stage         CandidateStageState?
+  notes         CandidateNote[]
+  tags          CandidateTag[]
+  cvCache       CvTextCache?
+  assessments   Assessment[]
+
+  @@index([jobId])
+  @@index([candidateName])
+}
+
+model CandidateStageState {
+  candidateId Int @id
+  stage       CandidateStage @default(INBOX)
+  updatedAt   DateTime @updatedAt
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([stage])
+}
+
+model CandidateNote {
+  id          String   @id @default(cuid())
+  candidateId Int
+  author      String
+  content     String
+  createdAt   DateTime @default(now())
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, createdAt])
+}
+
+model CandidateTag {
+  candidateId Int
+  tag         String
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@id([candidateId, tag])
+  @@index([tag])
+}
+
+model CvTextCache {
+  candidateId Int @id
+  text        String
+  hash        String
+  extractedAt DateTime @default(now())
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model ScoringPolicy {
+  id        String   @id @default(cuid())
+  jobId     Int
+  version   Int
+  weights   Json
+  createdAt DateTime @default(now())
+
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, version])
+  @@index([jobId, createdAt])
+}
+
+model Assessment {
+  id            String   @id @default(cuid())
+  candidateId   Int
+  model         String
+  policyVersion Int
+  result        Json
+  createdAt     DateTime @default(now())
+
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, createdAt])
+  @@index([policyVersion])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}

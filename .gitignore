@@ -1,0 +1,18 @@
+# env
+.env
+.env.local
+.env.*
+
+# node
+node_modules
+.pnpm-store
+
+# build
+dist
+.next
+
+# prisma
+prisma/migrations
+
+# logs
+*.log
