@@ -41,6 +41,7 @@ model Candidate {
   tags          CandidateTag[]
   cvCache       CvTextCache?
   assessments   Assessment[]
+  score          CandidateScore?
 
   @@index([jobId])
   @@index([candidateName])
@@ -119,4 +120,26 @@ model Session {
   tokenHash String   @unique
   createdAt DateTime @default(now())
   expiresAt DateTime
+}
+
+model CandidateScore {
+  id             Int      @id @default(autoincrement())
+  candidateId    Int      @unique
+
+  relevanceScore   Int
+  relevanceReason  String
+
+  experienceScore  Int
+  experienceReason String
+
+  motivationScore  Int
+  motivationReason String
+
+  riskScore        Int
+  riskFlags        Json
+
+  finalScore     Float
+  createdAt      DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
 }

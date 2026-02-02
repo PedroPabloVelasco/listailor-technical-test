@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './infrastructure/db/prisma.module';
+import { ScoringModule } from './modules/scoring/scoring.module';
 
 import { AppController } from './app.controller';
 import { JobsModule } from './modules/jobs/jobs.module';
@@ -14,6 +15,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     JobsModule,
     ApplicationsModule,
     AnalyticsModule,
+    ScoringModule,
   ],
   controllers: [AppController],
 })

@@ -1,10 +1,11 @@
 import { fetchCandidates } from '@/lib/api/endpoints';
+import { CandidatesTable } from '@/components/candidates-table';
 
-type PageProps = {
+type Props = {
   params: Promise<{ jobId: string }>;
 };
 
-export default async function JobCandidatesPage({ params }: PageProps) {
+export default async function JobCandidatesPage({ params }: Props) {
   const { jobId } = await params;
   const jobIdNumber = Number(jobId);
 
@@ -12,34 +13,8 @@ export default async function JobCandidatesPage({ params }: PageProps) {
 
   return (
     <main className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">
-        Candidates for Job #{jobIdNumber}
-      </h1>
-
-      <ul className="space-y-2">
-        {candidates.map((c) => (
-          <li
-            key={c.id}
-            className="border rounded p-4 flex justify-between items-center"
-          >
-            <div>
-              <div className="font-medium">{c.candidateName}</div>
-              <div className="text-sm text-muted-foreground">
-                Stage: {c.stage}
-              </div>
-            </div>
-
-            <a
-              href={c.cvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm underline"
-            >
-              View CV
-            </a>
-          </li>
-        ))}
-      </ul>
+      <h1 className="text-2xl font-semibold">Candidates for Job #{jobIdNumber}</h1>
+      <CandidatesTable initial={candidates} />
     </main>
   );
 }
