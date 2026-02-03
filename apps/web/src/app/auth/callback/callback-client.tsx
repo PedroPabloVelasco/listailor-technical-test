@@ -32,6 +32,9 @@ export function CallbackClient() {
           throw new Error(data.error || 'No fue posible iniciar sesión');
         }
 
+        // Dar tiempo al navegador para procesar la cookie Set-Cookie
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         setStatus('success');
         setTimeout(() => {
           window.location.href = '/jobs';
