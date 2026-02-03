@@ -256,6 +256,9 @@ export function CandidateDetailDialog({
                 >
                   {scoring ? 'Calificando…' : 'Recalcular score'}
                 </Button>
+                <p className="w-full text-xs text-white/70 md:w-auto md:pl-2">
+                  Tip: recalcular actualiza el score en segundos usando la IA más reciente.
+                </p>
               </div>
             </div>
           </DialogHeader>

@@ -33,8 +33,8 @@ export default async function LoginPage({
         )}
         <p className="text-center text-xs text-slate-400">
           ¿Problemas? Escríbenos a{' '}
-          <Link href="mailto:team@listailor.com" className="font-semibold text-slate-700">
-            team@listailor.com
+          <Link href="mailto:pedropablovelasco@gmail.com" className="font-semibold text-slate-700">
+            pedropablovelasco@gmail.com
           </Link>
         </p>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import type { CandidateOverviewRow } from '@/lib/api/types';
 import { CandidateDetailDialog } from '@/components/candidate-detail-dialog';
 
@@ -86,18 +87,29 @@ export function PipelineBoard({ initial }: { initial: CandidateOverviewRow[] }) 
                 {groups[column].map((candidate) => (
                   <article
                     key={candidate.id}
-                    className="rounded-xl border border-white/80 bg-white p-3 text-sm shadow-sm transition hover:border-blue-200"
+                    className="group rounded-xl border border-white/80 bg-white p-3 text-sm shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200"
                   >
                     <button
-                      className="text-left"
+                      className="flex w-full flex-col gap-1 text-left"
                       onClick={() => {
                         setSelected(candidate);
                         setOpen(true);
                       }}
                     >
-                      <p className="font-semibold text-slate-900">{candidate.candidateName}</p>
-                      <p className="text-xs text-slate-500">{candidate.jobTitle}</p>
-                      <p className="mt-1 text-xs text-slate-400">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-900">{candidate.candidateName}</p>
+                          <p className="text-xs text-slate-500">{candidate.jobTitle}</p>
+                        </div>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition group-hover:bg-blue-50 group-hover:text-blue-700"
+                          title="Abre la ficha para revisar y recalcular el score"
+                        >
+                          Ver ficha
+                          <ArrowUpRight className="h-3 w-3" />
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">
                         Score {candidate.finalScore?.toFixed(2) ?? '—'}
                       </p>
                     </button>

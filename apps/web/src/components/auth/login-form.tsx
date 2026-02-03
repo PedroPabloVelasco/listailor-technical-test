@@ -26,7 +26,7 @@ export function LoginForm() {
         throw new Error(data?.message || 'No pudimos enviar el correo.');
       }
       setStatus('sent');
-      setMessage('Revisa tu correo para abrir el enlace de acceso.');
+      setMessage('Revisa tu correo para abrir el enlace de acceso. Puede estar en la carpeta de spam.');
       if (data?.previewLink) {
         setPreviewLink(data.previewLink as string);
       }

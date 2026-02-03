@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import type { Candidate, RubricConfig } from '@/lib/api/types';
 import { CandidateDetailDialog } from '@/components/candidate-detail-dialog';
 import { CHILE_TIME_LABEL, formatChileDateTime } from '@/lib/datetime';
@@ -100,6 +101,8 @@ const weightMeta: Record<
     tone: 'text-rose-700',
   },
 };
+
+const SCORE_TIP_STORAGE_KEY = 'listailor:score-tip-dismissed-v1';
 
 function formatRelativeTimestamp(ts: string | null): string {
   if (!ts) return 'Sin score';
@@ -218,6 +221,20 @@ export function CandidatesTable({
   const [editingScoreId, setEditingScoreId] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState<string>('');
   const [savingScoreId, setSavingScoreId] = useState<number | null>(null);
+  const [showScoreTip, setShowScoreTip] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const dismissed = window.localStorage.getItem(SCORE_TIP_STORAGE_KEY);
+    if (!dismissed) setShowScoreTip(true);
+  }, []);
+
+  const dismissScoreTip = () => {
+    setShowScoreTip(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SCORE_TIP_STORAGE_KEY, 'true');
+    }
+  };
 
   const positiveWeightTotal =
     weights.relevance + weights.experience + weights.motivation || 1;
@@ -387,6 +404,95 @@ function cancelManualScore() {
     riskFilter,
     priorityScores,
   ]);
+
+  const renderScoreContent = (candidate: Candidate, variant: 'table' | 'card' = 'table') => {
+    const numberInputClass = `${
+      variant === 'card' ? 'w-full py-2' : 'w-20 py-1'
+    } rounded-full border border-slate-200 px-3 text-sm text-slate-800 focus:border-emerald-400 focus:outline-none`;
+
+    return (
+      <div className="flex flex-col gap-2">
+        {candidate.finalScore === null ? (
+          <span className="text-xs uppercase tracking-wide text-slate-400">Pendiente</span>
+        ) : editingScoreId === candidate.id ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={5}
+                step={0.1}
+                value={editingValue}
+                onChange={(e) => setEditingValue(e.target.value)}
+                className={numberInputClass}
+              />
+              <button
+                type="button"
+                onClick={() => void onSaveManualScore(candidate.id)}
+                disabled={savingScoreId === candidate.id}
+                className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {savingScoreId === candidate.id ? 'Guardando…' : 'Guardar'}
+              </button>
+              <button
+                type="button"
+                onClick={cancelManualScore}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-slate-400"
+              >
+                Cancelar
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Último cálculo IA: <RelativeTime ts={candidate.lastScoredAt} />
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                {candidate.finalScore.toFixed(2)}
+              </span>
+              <button
+                type="button"
+                onClick={() => beginManualScore(candidate)}
+                className="text-xs font-semibold text-blue-700 hover:text-blue-900"
+              >
+                Editar
+              </button>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              <RelativeTime ts={candidate.lastScoredAt} />
+            </span>
+            {priorityScores.has(candidate.id) ? (
+              <span className="text-[11px] text-slate-400">
+                Prioridad personalizada:{' '}
+                <span className="font-semibold text-slate-600">
+                  {priorityScores.get(candidate.id)?.toFixed(2)}
+                </span>
+              </span>
+            ) : null}
+          </div>
+        )}
+        {candidate.riskFlags.length ? (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {candidate.riskFlags.slice(0, 3).map((flag) => (
+              <span
+                key={flag}
+                className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700"
+              >
+                {flag}
+              </span>
+            ))}
+            {candidate.riskFlags.length > 3 ? (
+              <span className="text-[10px] text-rose-500">
+                +{candidate.riskFlags.length - 3}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
 
 async function scoreCandidate(candidateId: number): Promise<NormalizedScore> {
@@ -761,176 +867,224 @@ async function scoreCandidate(candidateId: number): Promise<NormalizedScore> {
         </div>
       ) : null}
 
-      {/* Table */}
-      <div className="overflow-hidden rounded-3xl border border-white/70 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50/80 text-slate-500">
-            <tr className="text-left">
-              <th className="px-4 py-3 font-medium">Candidato</th>
-              <th className="px-4 py-3 font-medium">Etapa</th>
-              <th className="px-4 py-3 font-medium">Score final</th>
-              <th className="px-4 py-3 font-medium">CV</th>
-              <th className="px-4 py-3 text-right font-medium">Acciones</th>
-            </tr>
-          </thead>
+      {showScoreTip ? (
+        <div className="rounded-3xl border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold">Tip rápido</p>
+              <p className="text-sm text-blue-900/80">
+                Abre la ficha del candidato para revisar todos los datos y usa “Recalcular score” para refrescar la evaluación con IA.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissScoreTip}
+              className="self-start rounded-full border border-blue-200 bg-white/60 px-4 py-1.5 text-xs font-semibold text-blue-900 transition hover:border-blue-400"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      ) : null}
 
-          <tbody>
-            {filtered.map((c, idx) => (
-              <tr
+      {/* Table */}
+      <div className="rounded-3xl border border-white/70 bg-white">
+        <div className="hidden overflow-hidden rounded-3xl md:block">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50/80 text-slate-500">
+              <tr className="text-left">
+                <th className="px-4 py-3 font-medium">Candidato</th>
+                <th className="px-4 py-3 font-medium">Etapa</th>
+                <th className="px-4 py-3 font-medium">Score final</th>
+                <th className="px-4 py-3 font-medium">CV</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filtered.map((c, idx) => (
+                <tr
+                  key={c.id}
+                  className={
+                    idx % 2 === 0
+                      ? 'border-t border-slate-100 bg-white'
+                      : 'border-t border-slate-100 bg-slate-50/40'
+                  }
+                >
+                  <td className="px-4 py-3">
+                    <button
+                      className="w-full text-left text-slate-900 transition hover:text-blue-600"
+                      onClick={() => {
+                        setSelected(c);
+                        setOpen(true);
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold">{c.candidateName}</div>
+                          <div className="text-xs text-slate-500">ID #{c.id}</div>
+                        </div>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+                          title="Abre la ficha para revisar detalles y recalcular el score"
+                        >
+                          Ver ficha
+                          <ArrowUpRight className="h-3 w-3" />
+                        </span>
+                      </div>
+                    </button>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <select
+                      value={isStage(c.stage) ? c.stage : 'INBOX'}
+                      disabled={stageLoadingId === c.id || scoringInFlight}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (!isStage(next)) return;
+                        void updateCandidateStage(c.id, next);
+                      }}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+                    >
+                      {STAGES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  <td className="px-4 py-3 align-top">{renderScoreContent(c)}</td>
+
+                  <td className="px-4 py-3">
+                    <a
+                      href={c.cvUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900"
+                    >
+                      Ver CV
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" x2="21" y1="14" y2="3" />
+                      </svg>
+                    </a>
+                  </td>
+
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => void onScoreOne(c.id)}
+                      disabled={loadingId === c.id || scoringInFlight}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 disabled:opacity-50"
+                    >
+                      {loadingId === c.id ? 'Calificando…' : 'Score'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {filtered.length === 0 ? (
+                <tr>
+                  <td className="px-6 py-8 text-center text-sm text-slate-500" colSpan={5}>
+                    No hay candidatos que coincidan con los filtros seleccionados.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="block space-y-3 p-4 md:hidden">
+          {filtered.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+              No hay candidatos que coincidan con los filtros seleccionados.
+            </p>
+          ) : (
+            filtered.map((c) => (
+              <article
                 key={c.id}
-                className={idx % 2 === 0 ? 'border-t border-slate-100 bg-white' : 'border-t border-slate-100 bg-slate-50/40'}
+                className="rounded-2xl border border-slate-100 bg-white p-4 text-sm shadow-sm"
               >
-                <td className="px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">{c.candidateName}</p>
+                    <p className="text-xs text-slate-500">ID #{c.id}</p>
+                  </div>
                   <button
-                    className="text-left text-slate-900 transition hover:text-blue-600"
+                    type="button"
                     onClick={() => {
                       setSelected(c);
                       setOpen(true);
                     }}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
+                    title="Abre la ficha completa para recalcular el score con IA"
                   >
-                    <div className="font-semibold">{c.candidateName}</div>
-                    <div className="text-xs text-slate-500">ID #{c.id}</div>
+                    Ver ficha
+                    <ArrowUpRight className="h-3.5 w-3.5" />
                   </button>
-                </td>
+                </div>
 
-                <td className="px-4 py-3">
-                  <select
-                    value={isStage(c.stage) ? c.stage : 'INBOX'}
-                    disabled={stageLoadingId === c.id || scoringInFlight}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      if (!isStage(next)) return;
-                      void updateCandidateStage(c.id, next);
-                    }}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
-                  >
-                    {STAGES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-
-                <td className="px-4 py-3">
-                  {c.finalScore === null ? (
-                    <span className="text-xs uppercase tracking-wide text-slate-400">Pendiente</span>
-                  ) : editingScoreId === c.id ? (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={5}
-                          step={0.1}
-                          value={editingValue}
-                          onChange={(e) => setEditingValue(e.target.value)}
-                          className="w-20 rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-800 focus:border-emerald-400 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void onSaveManualScore(c.id)}
-                          disabled={savingScoreId === c.id}
-                          className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
-                        >
-                          {savingScoreId === c.id ? 'Guardando…' : 'Guardar'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelManualScore}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-slate-400"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        Último cálculo IA: <RelativeTime ts={c.lastScoredAt} />
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                          {c.finalScore.toFixed(2)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => beginManualScore(c)}
-                          className="text-xs font-semibold text-blue-700 hover:text-blue-900"
-                        >
-                          Editar
-                        </button>
-                      </div>
-                      <span className="text-[11px] text-slate-500">
-                        <RelativeTime ts={c.lastScoredAt} />
-                      </span>
-                      {priorityScores.has(c.id) ? (
-                        <span className="text-[11px] text-slate-400">
-                          Prioridad personalizada:{' '}
-                          <span className="font-semibold text-slate-600">
-                            {priorityScores.get(c.id)?.toFixed(2)}
-                          </span>
-                        </span>
-                      ) : null}
-                    </div>
-                  )}
-                  {c.riskFlags.length ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {c.riskFlags.slice(0, 3).map((flag) => (
-                        <span
-                          key={flag}
-                          className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700"
-                        >
-                          {flag}
-                        </span>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Etapa</p>
+                    <select
+                      value={isStage(c.stage) ? c.stage : 'INBOX'}
+                      disabled={stageLoadingId === c.id || scoringInFlight}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (!isStage(next)) return;
+                        void updateCandidateStage(c.id, next);
+                      }}
+                      className="mt-1 w-full rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-50"
+                    >
+                      {STAGES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
                       ))}
-                      {c.riskFlags.length > 3 ? (
-                        <span className="text-[10px] text-rose-500">
-                          +{c.riskFlags.length - 3}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </td>
+                    </select>
+                  </div>
 
-                <td className="px-4 py-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                      Score final
+                    </p>
+                    <div className="mt-2">{renderScoreContent(c, 'card')}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
                   <a
                     href={c.cvUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900"
+                    className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-center font-semibold text-blue-700 hover:text-blue-900"
                   >
                     Ver CV
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" x2="21" y1="14" y2="3" />
-                    </svg>
                   </a>
-                </td>
-
-                <td className="px-4 py-3 text-right">
                   <button
                     type="button"
                     onClick={() => void onScoreOne(c.id)}
                     disabled={loadingId === c.id || scoringInFlight}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 disabled:opacity-50"
+                    className="flex-1 rounded-full border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:border-slate-300 disabled:opacity-50"
                   >
-                    {loadingId === c.id ? 'Calificando…' : 'Score' }
+                    {loadingId === c.id ? 'Calificando…' : 'Score automático'}
                   </button>
-                </td>
-              </tr>
-            ))}
-
-            {filtered.length === 0 ? (
-              <tr>
-                <td className="px-6 py-8 text-center text-sm text-slate-500" colSpan={5}>
-                  No hay candidatos que coincidan con los filtros seleccionados.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
