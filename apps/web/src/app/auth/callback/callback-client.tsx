@@ -33,7 +33,10 @@ export function CallbackClient() {
         }
 
         setStatus('success');
-        setTimeout(() => router.push('/jobs'), 500);
+        setTimeout(() => {
+          router.refresh();
+          router.push('/jobs');
+        }, 1500);
       } catch (error) {
         setStatus('error');
         setErrorMessage((error as Error).message);
@@ -84,7 +87,7 @@ export function CallbackClient() {
             <h1 className="text-2xl font-bold text-green-600">
               ¡Sesión confirmada!
             </h1>
-            <p className="text-gray-600">Redirigiendo al dashboard...</p>
+            <p className="text-gray-600">Preparando tu dashboard...</p>
           </>
         )}
       </div>
