@@ -13,6 +13,9 @@ export async function PATCH(
 
   const jar = await cookies();
   const token = jar.get('session')?.value;
+  if (!token) {
+    return NextResponse.json({ message: 'Missing session cookie' }, { status: 401 });
+  }
   const body = await req.text();
 
   const res = await fetch(`${baseUrl}/candidates/${candidateId}/stage`, {
@@ -20,7 +23,8 @@ export async function PATCH(
     cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
+      Cookie: `session=${token}`,
     },
     body,
   });

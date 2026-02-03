@@ -13,12 +13,16 @@ export async function POST(
 
   const jar = await cookies();
   const token = jar.get('session')?.value;
+  if (!token) {
+    return NextResponse.json({ message: 'Missing session cookie' }, { status: 401 });
+  }
 
   const res = await fetch(`${baseUrl}/candidates/${candidateId}/score`, {
     method: 'POST',
     cache: 'no-store',
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
+      Cookie: `session=${token}`,
     },
   });
 
