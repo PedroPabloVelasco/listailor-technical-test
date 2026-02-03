@@ -6,12 +6,15 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { ScoreCandidateUseCase } from '../application/score-candidate.usecase';
 import { RUBRIC_VERSION, RUBRIC_WEIGHTS } from '../domain/rubric';
 import { ScoringRepository } from '../infrastructure/scoring.repository';
+import { SessionAuthGuard } from '../../auth/application/session.guard';
 
 @Controller()
+@UseGuards(SessionAuthGuard)
 export class ScoringController {
   constructor(
     private readonly scoreCandidate: ScoreCandidateUseCase,

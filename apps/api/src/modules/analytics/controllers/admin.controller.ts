@@ -1,8 +1,10 @@
-import { Controller, Logger, Post } from '@nestjs/common';
+import { Controller, Logger, Post, UseGuards } from '@nestjs/common';
 import { SyncJobsUseCase } from '../../jobs/application/sync-jobs.usecase';
 import { SyncApplicationsUseCase } from '../../applications/application/sync-applications.usecase';
+import { SessionAuthGuard } from '../../auth/application/session.guard';
 
 @Controller()
+@UseGuards(SessionAuthGuard)
 export class AdminController {
   private readonly logger = new Logger(AdminController.name);
 

@@ -36,7 +36,6 @@ export class OpenAiScoringService {
   }
 
   async evaluateCandidate(input: AiEvalInput): Promise<AiEvalOutput> {
-    // 1. Obtener texto real del PDF
     let cvText = '';
     try {
       cvText = await this.getTextFromPdf(input.cvUrl);
@@ -117,8 +116,6 @@ export class OpenAiScoringService {
   }
 }
 
-/* ------------------------ parsing & validation ------------------------ */
-
 function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
@@ -198,8 +195,6 @@ function clamp1to5(n: number): number {
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
-
-/* ------------------------ answers normalization ------------------------ */
 
 function normalizeAnswers(raw: unknown): string {
   const arr =

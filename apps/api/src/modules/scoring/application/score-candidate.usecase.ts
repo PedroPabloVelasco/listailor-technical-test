@@ -27,9 +27,6 @@ export class ScoreCandidateUseCase {
       rawAnswers: candidate.rawAnswers,
     });
 
-    // OJO: risk.score aquí es “riesgo” (1 bajo, 5 alto)
-    // Tu fórmula actual suma risk * 0.15, eso premiaría el riesgo alto.
-    // Mejor: convertir a "riskPenalty" o "riskInversion".
     const riskInversion = 6 - ai.risk.score; // 5->1, 1->5
 
     const finalScore =

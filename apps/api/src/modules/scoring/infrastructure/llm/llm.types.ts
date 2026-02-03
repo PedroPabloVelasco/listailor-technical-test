@@ -1,7 +1,7 @@
 export type Evidence = {
   source: 'answers';
   question?: string;
-  snippet: string; // <= 160 chars ideal
+  snippet: string;
 };
 
 export type LlmSignals = {

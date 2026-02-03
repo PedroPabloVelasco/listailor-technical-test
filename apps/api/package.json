@@ -16,6 +16,7 @@
     "lint": "eslint",
     "test": "jest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "postinstall": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "test:watch": "jest --watch",

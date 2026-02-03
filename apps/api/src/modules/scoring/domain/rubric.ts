@@ -26,7 +26,6 @@ const clamp = (n: number, min: number, max: number) =>
   Math.max(min, Math.min(max, n));
 
 export function scoreWithRubric(signals: LlmSignals): ScoringResult {
-  // Heurísticas simples: número de señales + calidad de evidencia (aprox)
   const relevanceBase = clamp(
     2 + Math.min(3, signals.relevance.signals.length / 2),
     0,
@@ -43,7 +42,6 @@ export function scoreWithRubric(signals: LlmSignals): ScoringResult {
     5,
   );
 
-  // Risk: más flags => mayor score de riesgo
   const riskScore = clamp(signals.risk.flags.length, 0, 5);
 
   const relevance = {
@@ -72,7 +70,6 @@ export function scoreWithRubric(signals: LlmSignals): ScoringResult {
     evidence: signals.risk.evidence.map((e) => e.snippet).slice(0, 3),
   };
 
-  // Pesos (opinionados y defendibles)
   const final =
     RUBRIC_WEIGHTS.relevance * relevance.score +
     RUBRIC_WEIGHTS.experience * experience.score +

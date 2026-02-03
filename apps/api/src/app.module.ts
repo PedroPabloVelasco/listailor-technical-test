@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     ApplicationsModule,
     AnalyticsModule,
     ScoringModule,
+    AuthModule,
   ],
   controllers: [AppController],
 })

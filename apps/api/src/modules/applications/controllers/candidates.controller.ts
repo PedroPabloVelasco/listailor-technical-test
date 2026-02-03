@@ -6,14 +6,17 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { CandidatesRepository } from '../infrastructure/candidates.repository';
 import { UpdateCandidateStageUseCase } from '../application/update-candidate-stage.usecase';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { SessionAuthGuard } from '../../auth/application/session.guard';
 
 @Controller()
+@UseGuards(SessionAuthGuard)
 export class CandidatesController {
   constructor(
     private readonly candidatesRepo: CandidatesRepository,

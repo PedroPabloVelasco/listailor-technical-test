@@ -33,9 +33,6 @@ export class PrismaService
     }
 
     const pool = new Pool({ connectionString: url });
-
-    // Prisma v7: adapter is required for direct DB connections when URLs are not in schema.
-    // adapter-pg typing can be looser; cast once to keep the rest of the code safe.
     const adapter = new PrismaPg(pool) as unknown as PrismaAdapter;
 
     super({ adapter });

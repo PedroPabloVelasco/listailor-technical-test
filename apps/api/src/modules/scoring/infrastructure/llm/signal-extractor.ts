@@ -40,7 +40,6 @@ Candidate application answers:
 ${safeTrim(answersText)}
 `.trim();
 
-    // “JSON mode” + shape constraints (sin librerías extras)
     const res = await this.openai.get().chat.completions.create({
       model,
       temperature: 0.2,
@@ -75,10 +74,8 @@ Now extract.
     const text = res.choices[0]?.message?.content;
     if (!text) throw new Error('LLM returned empty response');
 
-    // Parse JSON
     const parsed = JSON.parse(text) as LlmSignals;
 
-    // Minimal sanity checks (sin Zod por ahora)
     if (
       !parsed.relevance ||
       !parsed.experience ||

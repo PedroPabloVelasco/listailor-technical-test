@@ -5,8 +5,10 @@ import { ScoreCandidateUseCase } from './application/score-candidate.usecase';
 import { ScoringRepository } from './infrastructure/scoring.repository';
 import { OpenAiScoringService } from './infrastructure/openai/openai-scoring.service';
 import { CandidatesRepository } from '../applications/infrastructure/candidates.repository';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+  imports: [AuthModule],
   controllers: [CandidateScoringController, ScoringController],
   providers: [
     OpenAiScoringService,

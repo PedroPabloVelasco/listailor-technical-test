@@ -118,8 +118,21 @@ model Assessment {
 model Session {
   id        String   @id @default(cuid())
   tokenHash String   @unique
+  email     String
   createdAt DateTime @default(now())
   expiresAt DateTime
+}
+
+model MagicLinkTicket {
+  id        String   @id @default(cuid())
+  email     String
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  consumedAt DateTime?
+
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model CandidateScore {
