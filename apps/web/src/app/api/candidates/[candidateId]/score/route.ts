@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export async function POST(
@@ -5,23 +6,24 @@ export async function POST(
   { params }: { params: Promise<{ candidateId: string }> },
 ) {
   const { candidateId } = await params;
-
   const baseUrl = process.env.API_BASE_URL;
   if (!baseUrl) {
-    return NextResponse.json(
-      { message: 'API_BASE_URL is not configured' },
-      { status: 500 },
-    );
+    return NextResponse.json({ message: 'API_BASE_URL is not configured' }, { status: 500 });
   }
+
+  const jar = await cookies();
+  const token = jar.get('session')?.value;
 
   const res = await fetch(`${baseUrl}/candidates/${candidateId}/score`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     cache: 'no-store',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
 
-  const text = await res.text();
-  return new NextResponse(text, {
+  const payload = await res.text();
+  return new NextResponse(payload, {
     status: res.status,
     headers: { 'Content-Type': 'application/json' },
   });
