@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { PDFParse } from 'pdf-parse';
 
 type AiEvalInput = {
   candidateId: number;
@@ -16,43 +17,69 @@ export type AiEvalOutput = {
   relevance: ScoreDimension;
   experience: ScoreDimension;
   motivation: ScoreDimension;
-  risk: ScoreDimension; // <- dimensión (score+reason)
-  riskFlags: string[]; // <- flags aparte
+  risk: ScoreDimension;
+  riskFlags: string[];
 };
 
 @Injectable()
 export class OpenAiScoringService {
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly logger = new Logger(OpenAiScoringService.name);
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) throw new Error('OPENAI_API_KEY is missing');
 
-    this.model = this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4.1-mini';
+    this.model = this.config.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini';
     this.client = new OpenAI({ apiKey });
   }
 
   async evaluateCandidate(input: AiEvalInput): Promise<AiEvalOutput> {
+    // 1. Obtener texto real del PDF
+    let cvText = '';
+    try {
+      cvText = await this.getTextFromPdf(input.cvUrl);
+    } catch (error) {
+      this.logger.error(
+        `Error reading PDF for candidate ${input.candidateId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      cvText = '(Could not read CV PDF content. Score based on answers only)';
+    }
+
     const answersText = normalizeAnswers(input.rawAnswers);
 
     const prompt = [
-      `You are assisting a hiring manager by scoring a candidate.`,
-      `Return ONLY valid JSON. No markdown.`,
+      `Eres un analista de talento que puntúa a un candidato en español neutro.`,
+      `Regresa ÚNICAMENTE JSON válido (sin markdown, sin texto extra).`,
       ``,
-      `Candidate: ${input.candidateName} (id=${input.candidateId})`,
+      `Candidato: ${input.candidateName} (id=${input.candidateId})`,
       `JobId: ${input.jobId}`,
-      `CV URL: ${input.cvUrl}`,
       ``,
-      `Application answers (verbatim):`,
-      answersText || '(no answers)',
+      `--- CONTENIDO CV (INICIO) ---`,
+      cvText.slice(0, 20000), // Limite de seguridad
+      `--- CONTENIDO CV (FIN) ---`,
       ``,
-      `Rubric (scores 1-5):`,
-      `- relevance: fit/alignment to the role/team based on answers`,
-      `- experience: evidence of scope/ownership/impact`,
-      `- motivation: specificity and clarity of interest`,
-      `- risk: risk/concerns (1-5 where 1 is low risk). Provide reason.`,
-      `Also provide riskFlags: array of short strings (max 20)`,
+      `Respuestas de la aplicación (texto literal):`,
+      answersText || '(sin respuestas)',
+      ``,
+      `Rúbrica (puntajes 1-5):`,
+      `- relevance: ajuste al rol/equipo basándose en CV y respuestas`,
+      `- experience: evidencia de alcance/impacto/liderazgo en el CV`,
+      `- motivation: claridad y especificidad del interés en el puesto`,
+      `- risk: riesgos o banderas (1 = bajo riesgo). Explica.`,
+      ``,
+      `Guía de puntuación (usa 1-5 con dispersión realista):`,
+      `- 5: evidencia sobresaliente y específica.`,
+      `- 4: señales claras de excelencia, pero aún con oportunidades.`,
+      `- 3: estándar; lo suficiente para el puesto sin destacar.`,
+      `- 2: dudas relevantes o evidencia limitada.`,
+      `- 1: señales negativas o ausencia de datos.`,
+      `Siempre referencia datos del CV o respuestas; si algo falta, dilo explícitamente.`,
+      `Incluye riskFlags: arreglo de strings cortos (máx 20) cuando existan banderas.`,
+      `Todas las razones deben estar en español claro.`,
       ``,
       `JSON schema:`,
       `{"relevance":{"score":1,"reason":"..."}, "experience":{"score":1,"reason":"..."}, "motivation":{"score":1,"reason":"..."}, "risk":{"score":1,"reason":"..."}, "riskFlags":["..."]}`,
@@ -62,6 +89,7 @@ export class OpenAiScoringService {
       model: this.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
+      response_format: { type: 'json_object' },
     });
 
     const text = resp.choices[0]?.message?.content ?? '{}';
@@ -71,12 +99,27 @@ export class OpenAiScoringService {
 
     return parsed;
   }
+
+  private async getTextFromPdf(url: string): Promise<string> {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch PDF: ${res.statusText}`);
+
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const { text } = await parser.getText();
+      return text.replace(/\n+/g, ' ').trim();
+    } finally {
+      await parser.destroy();
+    }
+  }
 }
 
 /* ------------------------ parsing & validation ------------------------ */
 
 function safeJsonParse(text: string): unknown {
-  // intenta parsear directo; si falla, intenta extraer el primer bloque {...}
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -96,10 +139,10 @@ function safeJsonParse(text: string): unknown {
 
 function coerceAiEval(x: unknown): AiEvalOutput {
   const base: AiEvalOutput = {
-    relevance: { score: 3, reason: 'No reason provided' },
-    experience: { score: 3, reason: 'No reason provided' },
-    motivation: { score: 3, reason: 'No reason provided' },
-    risk: { score: 1, reason: 'No reason provided' }, // riesgo bajo por defecto
+    relevance: { score: 3, reason: 'Analysis failed or invalid JSON' },
+    experience: { score: 3, reason: 'Analysis failed or invalid JSON' },
+    motivation: { score: 3, reason: 'Analysis failed or invalid JSON' },
+    risk: { score: 1, reason: 'Analysis failed or invalid JSON' },
     riskFlags: [],
   };
 
@@ -159,9 +202,6 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 /* ------------------------ answers normalization ------------------------ */
 
 function normalizeAnswers(raw: unknown): string {
-  // rawAnswers puede venir como:
-  // 1) { answers: [{question, value}] }
-  // 2) [{question, value}]
   const arr =
     isRecord(raw) && Array.isArray(raw['answers'])
       ? raw['answers']

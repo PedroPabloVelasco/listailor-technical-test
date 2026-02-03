@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Candidate } from '@/lib/api/endpoints';
+import type { Candidate } from '@/lib/api/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { CHILE_TIME_LABEL, formatChileDateTime } from '@/lib/datetime';
 
 type AnswerItem = { question: string; value: string };
 
@@ -40,9 +41,10 @@ type CandidateDetail = {
 const stageTone: Record<string, string> = {
   INBOX: 'bg-slate-100 text-slate-700',
   SHORTLIST: 'bg-blue-50 text-blue-700',
+  MAYBE: 'bg-purple-50 text-purple-700',
+  NO: 'bg-rose-50 text-rose-700',
   INTERVIEW: 'bg-amber-50 text-amber-700',
   OFFER: 'bg-emerald-50 text-emerald-700',
-  REJECTED: 'bg-rose-50 text-rose-700',
 };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -75,9 +77,7 @@ function extractAnswers(rawAnswers: unknown): AnswerItem[] {
 }
 
 function formatLocal(dt: string): string {
-  const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return dt;
-  return d.toLocaleString();
+  return `${formatChileDateTime(dt)} · ${CHILE_TIME_LABEL}`;
 }
 
 function isUrlLike(text: string): boolean {

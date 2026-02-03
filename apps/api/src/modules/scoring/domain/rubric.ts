@@ -14,6 +14,14 @@ export type ScoringResult = {
   rubricVersion: string;
 };
 
+export const RUBRIC_VERSION = 'v1.0';
+export const RUBRIC_WEIGHTS = {
+  relevance: 0.35,
+  experience: 0.35,
+  motivation: 0.2,
+  riskPenalty: 0.1,
+};
+
 const clamp = (n: number, min: number, max: number) =>
   Math.max(min, Math.min(max, n));
 
@@ -66,10 +74,10 @@ export function scoreWithRubric(signals: LlmSignals): ScoringResult {
 
   // Pesos (opinionados y defendibles)
   const final =
-    0.35 * relevance.score +
-    0.35 * experience.score +
-    0.2 * motivation.score -
-    0.1 * risk.score;
+    RUBRIC_WEIGHTS.relevance * relevance.score +
+    RUBRIC_WEIGHTS.experience * experience.score +
+    RUBRIC_WEIGHTS.motivation * motivation.score -
+    RUBRIC_WEIGHTS.riskPenalty * risk.score;
 
   return {
     relevance,
@@ -77,6 +85,6 @@ export function scoreWithRubric(signals: LlmSignals): ScoringResult {
     motivation,
     risk,
     finalScore: Math.round(clamp(final, 0, 5) * 100) / 100,
-    rubricVersion: 'v1.0',
+    rubricVersion: RUBRIC_VERSION,
   };
 }

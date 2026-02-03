@@ -25,6 +25,11 @@ export class CandidatesController {
     return this.candidatesRepo.listByJob(jobId);
   }
 
+  @Get('/candidates/overview')
+  async overview() {
+    return this.candidatesRepo.listOverview();
+  }
+
   @Get('/candidates/:candidateId')
   async getCandidate(@Param('candidateId', ParseIntPipe) candidateId: number) {
     const detail = await this.candidatesRepo.getDetail(candidateId);

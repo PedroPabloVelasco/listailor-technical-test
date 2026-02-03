@@ -39,4 +39,24 @@ export class ScoringRepository {
       },
     });
   }
+
+  async updateFinalScore(
+    candidateId: number,
+    finalScore: number,
+  ): Promise<CandidateScore> {
+    const existing = await this.prisma.candidateScore.findUnique({
+      where: { candidateId },
+    });
+
+    if (!existing) {
+      throw new Error(
+        `Candidate ${candidateId} does not have an existing score to update`,
+      );
+    }
+
+    return this.prisma.candidateScore.update({
+      where: { candidateId },
+      data: { finalScore },
+    });
+  }
 }

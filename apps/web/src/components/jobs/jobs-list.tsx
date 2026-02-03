@@ -13,6 +13,7 @@ export type JobCardData = {
 
 type ApplicantFilter = 'all' | 'none' | 'focus' | 'heavy';
 type RoleFilter = 'all' | 'tech' | 'business';
+type SortMode = 'title_asc' | 'title_desc' | 'applicants_desc' | 'applicants_asc';
 
 type Props = {
   jobs: JobCardData[];
@@ -23,9 +24,9 @@ const applicantFilters: Array<{
   label: string;
   helper: string;
 }> = [
-  { value: 'all', label: 'Todos los pipelines', helper: 'Cualquier tamaño' },
-  { value: 'none', label: 'Sin pipeline', helper: '0 personas' },
-  { value: 'focus', label: 'Necesita atención', helper: '1 a 5 personas' },
+  { value: 'all', label: 'Todos los candidatos', helper: 'Cualquier tamaño' },
+  { value: 'none', label: 'Sin personas', helper: '0 en proceso' },
+  { value: 'focus', label: 'Revisión rápida', helper: '1 a 5 personas' },
   { value: 'heavy', label: 'Alta demanda', helper: '6+ personas' },
 ];
 
@@ -42,7 +43,7 @@ const roleFilters: Array<{
 const applicantsLabel = (count: number) =>
   count === 0
     ? 'Sin personas en proceso'
-    : `${count} ${count === 1 ? 'persona' : 'personas'} en proceso`;
+    : `${count} ${count === 1 ? 'persona' : 'personas'} en flujo`;
 
 const getRoleCategory = (job: JobCardData): RoleFilter => {
   const techKeywords = /(engineer|developer|software|security|data|tech|devops)/i;
@@ -69,11 +70,12 @@ export function JobsList({ jobs }: Props) {
   const [query, setQuery] = useState('');
   const [countFilter, setCountFilter] = useState<ApplicantFilter>('all');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('applicants_desc');
 
   const normalizedQuery = query.trim().toLowerCase();
 
   const filteredJobs = useMemo(() => {
-    return jobs.filter((job) => {
+    const filtered = jobs.filter((job) => {
       if (!matchesApplicantFilter(job.applicants, countFilter)) {
         return false;
       }
@@ -92,7 +94,21 @@ export function JobsList({ jobs }: Props) {
 
       return true;
     });
-  }, [jobs, countFilter, roleFilter, normalizedQuery]);
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortMode) {
+        case 'title_asc':
+          return a.title.localeCompare(b.title);
+        case 'title_desc':
+          return b.title.localeCompare(a.title);
+        case 'applicants_asc':
+          return a.applicants - b.applicants;
+        case 'applicants_desc':
+        default:
+          return b.applicants - a.applicants;
+      }
+    });
+    return sorted;
+  }, [jobs, countFilter, roleFilter, normalizedQuery, sortMode]);
 
   return (
     <section>
@@ -112,7 +128,7 @@ export function JobsList({ jobs }: Props) {
 
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-            Personas en pipeline
+            Personas en flujo
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {applicantFilters.map((option) => {
@@ -161,6 +177,22 @@ export function JobsList({ jobs }: Props) {
           </div>
           <p className="mt-2 text-xs text-slate-500">{roleFilters.find((r) => r.value === roleFilter)?.helper}</p>
         </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+            Ordenar por
+          </p>
+          <select
+            value={sortMode}
+            onChange={(event) => setSortMode(event.target.value as SortMode)}
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="applicants_desc">Más personas en flujo</option>
+            <option value="applicants_asc">Menos personas en flujo</option>
+            <option value="title_asc">Título A → Z</option>
+            <option value="title_desc">Título Z → A</option>
+          </select>
+        </div>
       </div>
 
       <div className="space-y-5">
@@ -191,14 +223,13 @@ export function JobsList({ jobs }: Props) {
                     {applicantsLabel(job.applicants)}
                   </span>
                 </div>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600 line-clamp-3">{job.preview}</p>
               </div>
               <Link
                 href={`/jobs/${job.id}`}
                 className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
                 prefetch={false}
               >
-                Ver pipeline
+                Ver candidatos
                 <svg
                   className="h-4 w-4"
                   viewBox="0 0 24 24"
@@ -242,9 +273,9 @@ export function JobsList({ jobs }: Props) {
           <p className="text-base font-semibold text-slate-800">
             No encontramos roles para esos filtros.
           </p>
-          <p className="mt-2 text-sm text-slate-600">
-            Ajusta la búsqueda o cambia los rangos de personas en pipeline.
-          </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Ajusta la búsqueda o cambia los rangos de personas en seguimiento.
+            </p>
         </div>
       )}
     </section>

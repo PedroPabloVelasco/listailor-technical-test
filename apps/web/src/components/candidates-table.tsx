@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import type { Candidate } from '@/lib/api/endpoints';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Candidate, RubricConfig } from '@/lib/api/types';
 import { CandidateDetailDialog } from '@/components/candidate-detail-dialog';
+import { CHILE_TIME_LABEL, formatChileDateTime } from '@/lib/datetime';
 
 
 type ScoreDimension = {
@@ -47,29 +48,119 @@ type RawScoreResponse =
       createdAt: string;
     };
 
-type SortMode = 'unscored_first' | 'score_desc' | 'score_asc' | 'name_asc';
+type SortMode = 'unscored_first' | 'score_desc' | 'score_asc' | 'name_asc' | 'priority_desc';
 
-const STAGES = ['INBOX', 'SHORTLIST', 'INTERVIEW', 'OFFER', 'REJECTED'] as const;
+const STAGES = ['INBOX', 'SHORTLIST', 'MAYBE', 'NO', 'INTERVIEW', 'OFFER'] as const;
 type Stage = (typeof STAGES)[number];
 type StageFilter = 'ALL' | Stage;
 
-const stageColors: Record<Stage, string> = {
-  INBOX: 'bg-slate-400',
-  SHORTLIST: 'bg-blue-500',
-  INTERVIEW: 'bg-amber-500',
-  OFFER: 'bg-emerald-500',
-  REJECTED: 'bg-rose-500',
+const stageColors: Record<Stage, string> = STAGES.reduce(
+  (acc, stage) => {
+    acc[stage] =
+      stage === 'INBOX'
+        ? 'bg-slate-400'
+        : stage === 'SHORTLIST'
+          ? 'bg-blue-500'
+          : stage === 'MAYBE'
+            ? 'bg-purple-500'
+            : stage === 'NO'
+              ? 'bg-rose-500'
+              : stage === 'INTERVIEW'
+                ? 'bg-amber-500'
+                : 'bg-emerald-500';
+    return acc;
+  },
+  {} as Record<Stage, string>,
+);
+
+type WeightKey = keyof RubricConfig['weights'];
+
+const weightMeta: Record<
+  WeightKey,
+  { label: string; helper: string; tone: string }
+> = {
+  relevance: {
+    label: 'Relevancia',
+    helper: '¿Qué tan alineado está con el rol/equipo?',
+    tone: 'text-emerald-700',
+  },
+  experience: {
+    label: 'Experiencia',
+    helper: 'Alcance y evidencia de impacto previo.',
+    tone: 'text-blue-700',
+  },
+  motivation: {
+    label: 'Motivación',
+    helper: 'Claridad del interés y contexto aportado.',
+    tone: 'text-amber-700',
+  },
+  riskPenalty: {
+    label: 'Penalización de riesgo',
+    helper: 'Se resta cuando existen banderas o dudas.',
+    tone: 'text-rose-700',
+  },
 };
+
+function formatRelativeTimestamp(ts: string | null): string {
+  if (!ts) return 'Sin score';
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return 'Sin registro';
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (minutes < 1) return 'Hace instantes';
+  if (minutes < 60) return `Hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `Hace ${days} d`;
+  return formatChileDateTime(date);
+}
+
+function useRelativeTime(ts: string | null): string {
+  const [value, setValue] = useState('—');
+
+  useEffect(() => {
+    setValue(formatRelativeTimestamp(ts));
+  }, [ts]);
+
+  return value;
+}
+
+function RelativeTime({ ts }: { ts: string | null }) {
+  const value = useRelativeTime(ts);
+  const absolute = ts ? formatChileDateTime(ts) : null;
+  return (
+    <span title={absolute ? `${absolute} · ${CHILE_TIME_LABEL}` : undefined}>
+      {value}
+    </span>
+  );
+}
 
 const sortOptions: Array<{ value: SortMode; label: string }> = [
   { value: 'unscored_first', label: 'Pendientes primero' },
   { value: 'score_desc', label: 'Mayor puntaje' },
+  { value: 'priority_desc', label: 'Prioridad (pesos IA)' },
   { value: 'score_asc', label: 'Menor puntaje' },
   { value: 'name_asc', label: 'Nombre A→Z' },
 ];
 
 function isStage(x: string): x is Stage {
   return (STAGES as readonly string[]).includes(x);
+}
+
+function applyScoreToCandidate(candidate: Candidate, score: NormalizedScore): Candidate {
+  const updatedAt = score.createdAt ?? new Date().toISOString();
+
+  return {
+    ...candidate,
+    finalScore: score.finalScore,
+    relevanceScore: score.relevance.score,
+    experienceScore: score.experience.score,
+    motivationScore: score.motivation.score,
+    riskScore: score.risk.score,
+    riskFlags: score.riskFlags ?? candidate.riskFlags,
+    lastScoredAt: updatedAt,
+  };
 }
 
 function normalizeScore(data: RawScoreResponse): NormalizedScore {
@@ -98,13 +189,20 @@ function normalizeScore(data: RawScoreResponse): NormalizedScore {
   };
 }
 
-export function CandidatesTable({ initial }: { initial: Candidate[] }) {
+export function CandidatesTable({
+  initial,
+  rubric,
+}: {
+  initial: Candidate[];
+  rubric: RubricConfig;
+}) {
   const [rows, setRows] = useState<Candidate[]>(initial);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Candidate | null>(null);
 
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [scoreAllLoading, setScoreAllLoading] = useState(false);
   const [stageLoadingId, setStageLoadingId] = useState<number | null>(null);
 
   const [lastScore, setLastScore] = useState<NormalizedScore | null>(null);
@@ -113,8 +211,89 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
   const [query, setQuery] = useState('');
   const [onlyUnscored, setOnlyUnscored] = useState(false);
   const [stageFilter, setStageFilter] = useState<StageFilter>('ALL');
+  const [riskFilter, setRiskFilter] = useState<'all' | 'flagged' | 'clear'>('all');
   const [sort, setSort] = useState<SortMode>('unscored_first');
   const [bulkN, setBulkN] = useState<number>(10);
+  const [weights, setWeights] = useState(() => ({ ...rubric.weights }));
+  const [editingScoreId, setEditingScoreId] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState<string>('');
+  const [savingScoreId, setSavingScoreId] = useState<number | null>(null);
+
+  const positiveWeightTotal =
+    weights.relevance + weights.experience + weights.motivation || 1;
+
+  const weightPercentages = {
+    relevance: Math.round((weights.relevance / positiveWeightTotal) * 100),
+    experience: Math.round((weights.experience / positiveWeightTotal) * 100),
+    motivation: Math.round((weights.motivation / positiveWeightTotal) * 100),
+  };
+
+  const latestAudit = useMemo(() => {
+    const timestamps = rows
+      .map((c) => (c.lastScoredAt ? new Date(c.lastScoredAt).getTime() : null))
+      .filter((n): n is number => typeof n === 'number');
+    if (!timestamps.length) return null;
+    return new Date(Math.max(...timestamps)).toISOString();
+  }, [rows]);
+
+  const computePriorityScore = useCallback((candidate: Candidate): number | null => {
+    if (
+      candidate.relevanceScore === null ||
+      candidate.experienceScore === null ||
+      candidate.motivationScore === null ||
+      candidate.riskScore === null
+    ) {
+      return candidate.finalScore;
+    }
+    const raw =
+      weights.relevance * candidate.relevanceScore +
+      weights.experience * candidate.experienceScore +
+      weights.motivation * candidate.motivationScore -
+      weights.riskPenalty * candidate.riskScore;
+
+    const clamped = Math.max(0, Math.min(5, raw));
+    return Math.round(clamped * 100) / 100;
+  }, [weights]);
+
+  const priorityScores = useMemo(() => {
+    const map = new Map<number, number>();
+    rows.forEach((candidate) => {
+      const score = computePriorityScore(candidate);
+      if (typeof score === 'number' && Number.isFinite(score)) {
+        map.set(candidate.id, score);
+      }
+    });
+    return map;
+  }, [rows, computePriorityScore]);
+
+  function beginManualScore(candidate: Candidate) {
+    if (candidate.finalScore === null) return;
+    setError(null);
+    setEditingScoreId(candidate.id);
+    setEditingValue(candidate.finalScore.toFixed(2));
+  }
+
+function cancelManualScore() {
+  setEditingScoreId(null);
+  setEditingValue('');
+}
+
+  async function persistFinalScore(candidateId: number, value: number) {
+    const res = await fetch(`/api/candidates/${candidateId}/final-score`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ finalScore: value }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json()) as { candidateId: number; finalScore: number };
+  }
+
+  function handleWeightChange(key: WeightKey, value: number) {
+    setWeights((prev) => ({
+      ...prev,
+      [key]: Number.isNaN(value) ? prev[key] : value,
+    }));
+  }
 
   const summary = useMemo(() => {
     const total = rows.length;
@@ -126,19 +305,29 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
     return { total, scored: scored.length, unscored, avgScore };
   }, [rows]);
 
+  const scoringInFlight = bulkLoading || scoreAllLoading;
+
   const stageDistribution = useMemo(() => {
-    const counts: Record<Stage, number> = {
-      INBOX: 0,
-      SHORTLIST: 0,
-      INTERVIEW: 0,
-      OFFER: 0,
-      REJECTED: 0,
-    };
+    const counts = STAGES.reduce(
+      (acc, stage) => ({ ...acc, [stage]: 0 }),
+      {} as Record<Stage, number>,
+    );
     rows.forEach((c) => {
       if (isStage(c.stage)) counts[c.stage] += 1;
     });
     return counts;
   }, [rows]);
+
+  const leaderboard = useMemo(() => {
+    const scored = rows.filter((c) => c.finalScore !== null);
+    return scored
+      .map((c) => ({
+        ...c,
+        priority: priorityScores.get(c.id) ?? c.finalScore ?? 0,
+      }))
+      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+      .slice(0, 5);
+  }, [rows, priorityScores]);
 
 
   const filtered = useMemo(() => {
@@ -147,7 +336,22 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
 
     if (q) list = list.filter((c) => c.candidateName.toLowerCase().includes(q));
     if (stageFilter !== 'ALL') list = list.filter((c) => c.stage === stageFilter);
-    if (onlyUnscored) list = list.filter((c) => c.finalScore === null);
+    if (onlyUnscored) {
+      list = list.filter((c) => c.finalScore === null);
+    } else {
+      list = list.filter((c) => {
+        if (c.finalScore === null) return true;
+        return (
+          c.finalScore >= 0 && c.finalScore <= 5
+        );
+      });
+    }
+
+    if (riskFilter === 'flagged') {
+      list = list.filter((c) => c.riskFlags.length > 0);
+    } else if (riskFilter === 'clear') {
+      list = list.filter((c) => c.riskFlags.length === 0);
+    }
 
     const byName = (a: Candidate, b: Candidate) =>
       a.candidateName.localeCompare(b.candidateName);
@@ -157,6 +361,10 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
 
     const byScoreAsc = (a: Candidate, b: Candidate) =>
       (a.finalScore ?? Infinity) - (b.finalScore ?? Infinity);
+
+    const byPriorityDesc = (a: Candidate, b: Candidate) =>
+      (priorityScores.get(b.id) ?? -Infinity) -
+      (priorityScores.get(a.id) ?? -Infinity);
 
     const unscoredFirst = (a: Candidate, b: Candidate) => {
       const au = a.finalScore === null ? 0 : 1;
@@ -168,11 +376,20 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
     if (sort === 'name_asc') return [...list].sort(byName);
     if (sort === 'score_desc') return [...list].sort(byScoreDesc);
     if (sort === 'score_asc') return [...list].sort(byScoreAsc);
+    if (sort === 'priority_desc') return [...list].sort(byPriorityDesc);
     return [...list].sort(unscoredFirst);
-  }, [rows, query, stageFilter, onlyUnscored, sort]);
+  }, [
+    rows,
+    query,
+    stageFilter,
+    onlyUnscored,
+    sort,
+    riskFilter,
+    priorityScores,
+  ]);
 
 
-  async function scoreCandidate(candidateId: number): Promise<NormalizedScore> {
+async function scoreCandidate(candidateId: number): Promise<NormalizedScore> {
     const res = await fetch(`/api/candidates/${candidateId}/score`, { method: 'POST' });
     if (!res.ok) throw new Error(await res.text());
     const raw = (await res.json()) as RawScoreResponse;
@@ -186,7 +403,7 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
     try {
       const data = await scoreCandidate(candidateId);
       setRows((prev) =>
-        prev.map((c) => (c.id === candidateId ? { ...c, finalScore: data.finalScore } : c)),
+        prev.map((c) => (c.id === candidateId ? applyScoreToCandidate(c, data) : c)),
       );
       setLastScore(data);
     } catch (e) {
@@ -208,7 +425,7 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
       for (const c of targets) {
         const data = await scoreCandidate(c.id);
         setRows((prev) =>
-          prev.map((x) => (x.id === c.id ? { ...x, finalScore: data.finalScore } : x)),
+          prev.map((x) => (x.id === c.id ? applyScoreToCandidate(x, data) : x)),
         );
         setLastScore(data);
       }
@@ -216,6 +433,64 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setBulkLoading(false);
+    }
+  }
+
+  async function onScoreAll() {
+    if (!rows.some((c) => c.finalScore === null)) {
+      setError('Todos los candidatos ya tienen score.');
+      return;
+    }
+
+    setError(null);
+    setScoreAllLoading(true);
+
+    try {
+      for (const candidate of rows) {
+        if (candidate.finalScore !== null) continue;
+        const data = await scoreCandidate(candidate.id);
+        setRows((prev) =>
+          prev.map((row) =>
+            row.id === candidate.id ? applyScoreToCandidate(row, data) : row,
+          ),
+        );
+        setLastScore(data);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setScoreAllLoading(false);
+    }
+  }
+
+  async function onSaveManualScore(candidateId: number) {
+    const parsed = Number(editingValue);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 5) {
+      setError('El score manual debe estar entre 1 y 5');
+      return;
+    }
+    setError(null);
+    setSavingScoreId(candidateId);
+    try {
+      const payload = await persistFinalScore(candidateId, Number(parsed.toFixed(2)));
+      const nowIso = new Date().toISOString();
+      setRows((prev) =>
+        prev.map((c) =>
+          c.id === candidateId
+            ? { ...c, finalScore: payload.finalScore, lastScoredAt: nowIso }
+            : c,
+        ),
+      );
+      setLastScore((prev) =>
+        prev && prev.candidateId === candidateId
+          ? { ...prev, finalScore: payload.finalScore, createdAt: nowIso }
+          : prev,
+      );
+      cancelManualScore();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo actualizar el score');
+    } finally {
+      setSavingScoreId(null);
     }
   }
 
@@ -281,6 +556,14 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
             >
               {bulkLoading ? 'Calificando…' : `Score automático`}
             </button>
+            <button
+              type="button"
+              onClick={() => void onScoreAll()}
+              disabled={scoreAllLoading || bulkLoading || summary.unscored === 0}
+              className="rounded-2xl border border-emerald-200 bg-emerald-600/90 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
+            >
+              {scoreAllLoading ? 'Calificando todo…' : `Score a todos (${summary.unscored})`}
+            </button>
           </div>
         </div>
 
@@ -330,6 +613,37 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
                 })}
               </div>
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                  Riesgo
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[
+                    { value: 'all', label: 'Todos' },
+                    { value: 'clear', label: 'Sin flags' },
+                    { value: 'flagged', label: 'Con flags' },
+                  ].map((option) => {
+                    const active = riskFilter === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setRiskFilter(option.value as typeof riskFilter)}
+                        className={`rounded-full border px-4 py-1 text-xs font-medium transition ${
+                          active
+                            ? 'border-rose-400 bg-rose-50 text-rose-700 shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-rose-200'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -370,10 +684,73 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
               ))}
             </div>
 
+            <div className="rounded-2xl border border-slate-100 bg-white/70 p-4 text-xs text-slate-500">
+              Registro más reciente:{' '}
+              <span className="font-semibold text-slate-800">
+                {latestAudit ? <RelativeTime ts={latestAudit} /> : 'sin datos'}
+              </span>{' '}
+              · Rubrica {rubric.version}
+            </div>
+
             <div className="text-xs text-slate-500">
               Mostrando {filtered.length} de {rows.length} candidatos
             </div>
+            <div className="text-[11px] text-slate-400">
+              Referencia de hora: {CHILE_TIME_LABEL}
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Scoring curation */}
+      <div className="rounded-3xl border border-white/70 bg-slate-900/90 p-6 text-white shadow-lg">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.5em] text-white/50">Política de scoring</p>
+            <p className="text-sm text-white/70">{rubric.notes}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setWeights({ ...rubric.weights })}
+            className="self-start rounded-full border border-white/30 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-white/10"
+          >
+            Restablecer pesos
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {(Object.keys(weightMeta) as WeightKey[]).map((key) => (
+            <div key={key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className={`text-sm font-semibold ${weightMeta[key].tone}`}>
+                {weightMeta[key].label}
+              </div>
+              <p className="text-xs text-white/60">{weightMeta[key].helper}</p>
+              <div className="mt-3 flex items-center gap-2 text-xs uppercase tracking-wide text-white/60">
+                Peso
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-white">
+                  {(weights[key] * 100).toFixed(0)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={key === 'riskPenalty' ? 0.3 : 0.6}
+                step={0.05}
+                value={weights[key]}
+                onChange={(e) => handleWeightChange(key, Number(e.target.value))}
+                className="mt-2 w-full accent-white"
+              />
+              {key !== 'riskPenalty' ? (
+                <p className="mt-2 text-xs text-white/60">
+                  {weightPercentages[key as keyof typeof weightPercentages]}% del peso positivo
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-white/60">
+                  Se resta hasta {(weights.riskPenalty * 5).toFixed(1)} pts en presencia de banderas.
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -419,7 +796,7 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
                 <td className="px-4 py-3">
                   <select
                     value={isStage(c.stage) ? c.stage : 'INBOX'}
-                    disabled={stageLoadingId === c.id || bulkLoading}
+                    disabled={stageLoadingId === c.id || scoringInFlight}
                     onChange={(e) => {
                       const next = e.target.value;
                       if (!isStage(next)) return;
@@ -438,11 +815,82 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
                 <td className="px-4 py-3">
                   {c.finalScore === null ? (
                     <span className="text-xs uppercase tracking-wide text-slate-400">Pendiente</span>
+                  ) : editingScoreId === c.id ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          step={0.1}
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          className="w-20 rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-800 focus:border-emerald-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void onSaveManualScore(c.id)}
+                          disabled={savingScoreId === c.id}
+                          className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          {savingScoreId === c.id ? 'Guardando…' : 'Guardar'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelManualScore}
+                          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-slate-400"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Último cálculo IA: <RelativeTime ts={c.lastScoredAt} />
+                      </p>
+                    </div>
                   ) : (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      {c.finalScore.toFixed(2)}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          {c.finalScore.toFixed(2)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => beginManualScore(c)}
+                          className="text-xs font-semibold text-blue-700 hover:text-blue-900"
+                        >
+                          Editar
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-slate-500">
+                        <RelativeTime ts={c.lastScoredAt} />
+                      </span>
+                      {priorityScores.has(c.id) ? (
+                        <span className="text-[11px] text-slate-400">
+                          Prioridad personalizada:{' '}
+                          <span className="font-semibold text-slate-600">
+                            {priorityScores.get(c.id)?.toFixed(2)}
+                          </span>
+                        </span>
+                      ) : null}
+                    </div>
                   )}
+                  {c.riskFlags.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {c.riskFlags.slice(0, 3).map((flag) => (
+                        <span
+                          key={flag}
+                          className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700"
+                        >
+                          {flag}
+                        </span>
+                      ))}
+                      {c.riskFlags.length > 3 ? (
+                        <span className="text-[10px] text-rose-500">
+                          +{c.riskFlags.length - 3}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </td>
 
                 <td className="px-4 py-3">
@@ -465,7 +913,7 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
                   <button
                     type="button"
                     onClick={() => void onScoreOne(c.id)}
-                    disabled={loadingId === c.id || bulkLoading}
+                    disabled={loadingId === c.id || scoringInFlight}
                     className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 disabled:opacity-50"
                   >
                     {loadingId === c.id ? 'Calificando…' : 'Score' }
@@ -483,6 +931,51 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
             ) : null}
           </tbody>
         </table>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Ranking recomendado</p>
+              <h3 className="text-lg font-semibold text-slate-900">Top {leaderboard.length} candidatos</h3>
+            </div>
+            <span className="rounded-full bg-slate-900/5 px-3 py-1 text-xs text-slate-600">
+              Pesos actuales
+            </span>
+          </div>
+          <ol className="mt-4 space-y-3">
+            {leaderboard.map((c, idx) => (
+              <li key={c.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400">#{idx + 1}</p>
+                    <p className="text-sm font-semibold text-slate-900">{c.candidateName}</p>
+                    <p className="text-xs text-slate-500">
+                      {isStage(c.stage) ? c.stage : 'INBOX'} · Score {c.finalScore?.toFixed(2) ?? '—'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Prioridad</p>
+                    <p className="text-base font-semibold text-slate-900">
+                      {(priorityScores.get(c.id) ?? c.finalScore ?? 0).toFixed(2)}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      <RelativeTime ts={c.lastScoredAt} />
+                    </p>
+                 </div>
+               </div>
+             </li>
+           ))}
+            {leaderboard.length === 0 ? (
+              <li className="rounded-2xl border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+                Aún no hay scores registrados. Ejecuta el scoring automático para poblar este ranking.
+              </li>
+            ) : null}
+          </ol>
+        </div>
+
+        <RiskOverview rows={rows} />
       </div>
 
       {/* Last score panel */}
@@ -520,6 +1013,9 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
                   ? `(${lastScore.riskFlags.join(', ')})`
                   : '(no flags)'}
               </div>
+              <div className="text-xs text-slate-500">
+                Actualizado: <RelativeTime ts={lastScore.createdAt ?? null} />
+              </div>
             </div>
           </div>
         </div>
@@ -535,6 +1031,64 @@ export function CandidatesTable({ initial }: { initial: Candidate[] }) {
           );
         }}
       />
+    </div>
+  );
+}
+
+function RiskOverview({ rows }: { rows: Candidate[] }) {
+  const flagged = rows
+    .filter((c) => c.riskFlags.length > 0)
+    .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0))
+    .slice(0, 5);
+
+  const pending = rows.filter((c) => c.finalScore === null).length;
+
+  return (
+    <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Auditoría</p>
+          <h3 className="text-lg font-semibold text-slate-900">Riesgos detectados</h3>
+        </div>
+        <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+          {flagged.length} con flags
+        </span>
+      </div>
+
+      {flagged.length ? (
+        <div className="mt-4 space-y-3">
+          {flagged.map((c) => (
+            <div
+              key={c.id}
+              className="rounded-2xl border border-rose-100 bg-rose-50/60 p-3 text-sm text-rose-900"
+            >
+              <div className="flex items-center justify-between">
+                <p className="font-semibold">{c.candidateName}</p>
+                <span className="text-xs font-semibold text-rose-600">
+                  Riesgo {c.riskScore?.toFixed(1) ?? '—'}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {c.riskFlags.map((flag) => (
+                  <span
+                    key={flag}
+                    className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-rose-600"
+                  >
+                    {flag}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-rose-700">
+                Último score: <RelativeTime ts={c.lastScoredAt} />
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-2xl border border-slate-200 border-dashed p-4 text-sm text-slate-500">
+          Aún no hay banderas. {pending ? `Quedan ${pending} pendientes de score.` : 'Continúa monitoreando.'}
+        </p>
+      )}
     </div>
   );
 }

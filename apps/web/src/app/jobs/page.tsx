@@ -1,5 +1,7 @@
 import { fetchJobs, fetchCandidates } from '@/lib/api/endpoints';
 import { JobsList, type JobCardData } from '@/components/jobs/jobs-list';
+import Link from 'next/link';
+import { PageHeader } from '@/components/page-header';
 
 const stripHtml = (html: string) =>
   html
@@ -23,16 +25,19 @@ export default async function JobsPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-10 px-4">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-10">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">
-            Hiring Dashboard
-          </p>
-          <h1 className="mt-2 text-4xl font-bold text-slate-900">Procesos abiertos</h1>
-          <p className="mt-3 text-base text-slate-600">
-            Revisa la información clave de cada rol y monitorea cuántas personas continúan en el pipeline.
-          </p>
-        </div>
+      <div className="mx-auto max-w-5xl space-y-8">
+        <PageHeader
+          title="Procesos abiertos"
+          subtitle="Revisa la información clave de cada rol y monitorea cuántas personas siguen en tu flujo de evaluación."
+          actions={
+            <Link
+              href="/pipeline"
+              className="rounded-full border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm"
+            >
+              Ver resumen global
+            </Link>
+          }
+        />
 
         <JobsList jobs={jobsWithApplicants} />
 

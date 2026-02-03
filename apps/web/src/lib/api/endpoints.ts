@@ -1,35 +1,23 @@
 import { backendGet } from '@/lib/server/backend';
-
-export type Job = {
-  id: number;
-  title: string;
-  description: string;
-};
+import type {
+  Job,
+  Candidate,
+  CandidateOverviewRow,
+  RubricConfig,
+} from '@/lib/api/types';
 
 export async function fetchJobs(): Promise<Job[]> {
   return backendGet<Job[]>('/jobs');
 }
 
-
-export type Candidate = {
-  id: number;
-  candidateName: string;
-  cvUrl: string;
-  stage: string;
-  finalScore: number | null;
-};
-
 export async function fetchCandidates(jobId: number): Promise<Candidate[]> {
   return backendGet<Candidate[]>(`/jobs/${jobId}/candidates`);
 }
 
-export const CANDIDATE_STAGES = [
-  'INBOX',
-  'SHORTLIST',
-  'INTERVIEW',
-  'OFFER',
-  'REJECTED',
-] as const;
+export async function fetchCandidatesOverview(): Promise<CandidateOverviewRow[]> {
+  return backendGet<CandidateOverviewRow[]>('/candidates/overview');
+}
 
-export type CandidateStage = (typeof CANDIDATE_STAGES)[number];
-
+export async function fetchRubricConfig(): Promise<RubricConfig> {
+  return backendGet<RubricConfig>('/scoring/rubric');
+}

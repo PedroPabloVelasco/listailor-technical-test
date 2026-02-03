@@ -16,6 +16,18 @@ export type CandidateListItem = {
   cvUrl: string;
   stage: CandidateStage;
   finalScore: number | null;
+  relevanceScore: number | null;
+  experienceScore: number | null;
+  motivationScore: number | null;
+  riskScore: number | null;
+  riskFlags: string[];
+  lastScoredAt: string | null;
+};
+
+export type CandidateOverviewItem = CandidateListItem & {
+  jobId: number;
+  jobTitle: string;
+  jobDescription: string | null;
 };
 
 export type CandidateDetail = {
@@ -77,7 +89,17 @@ export class CandidatesRepository {
         candidateName: true,
         cvUrl: true,
         stage: { select: { stage: true } },
-        score: { select: { finalScore: true } },
+        score: {
+          select: {
+            finalScore: true,
+            relevanceScore: true,
+            experienceScore: true,
+            motivationScore: true,
+            riskScore: true,
+            riskFlags: true,
+            createdAt: true,
+          },
+        },
       },
     });
 
@@ -87,6 +109,58 @@ export class CandidatesRepository {
       cvUrl: r.cvUrl,
       stage: r.stage?.stage ?? CandidateStage.INBOX,
       finalScore: r.score?.finalScore ?? null,
+      relevanceScore: r.score?.relevanceScore ?? null,
+      experienceScore: r.score?.experienceScore ?? null,
+      motivationScore: r.score?.motivationScore ?? null,
+      riskScore: r.score?.riskScore ?? null,
+      riskFlags: Array.isArray(r.score?.riskFlags)
+        ? (r.score?.riskFlags as string[])
+        : [],
+      lastScoredAt: r.score?.createdAt ? r.score.createdAt.toISOString() : null,
+    }));
+  }
+
+  async listOverview(): Promise<CandidateOverviewItem[]> {
+    const rows = await this.prisma.candidate.findMany({
+      orderBy: [{ jobId: 'asc' }, { candidateName: 'asc' }],
+      select: {
+        id: true,
+        candidateName: true,
+        cvUrl: true,
+        jobId: true,
+        job: { select: { title: true, description: true } },
+        stage: { select: { stage: true } },
+        score: {
+          select: {
+            finalScore: true,
+            relevanceScore: true,
+            experienceScore: true,
+            motivationScore: true,
+            riskScore: true,
+            riskFlags: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      candidateName: r.candidateName,
+      cvUrl: r.cvUrl,
+      jobId: r.jobId,
+      jobTitle: r.job?.title ?? 'Rol sin nombre',
+      jobDescription: r.job?.description ?? null,
+      stage: r.stage?.stage ?? CandidateStage.INBOX,
+      finalScore: r.score?.finalScore ?? null,
+      relevanceScore: r.score?.relevanceScore ?? null,
+      experienceScore: r.score?.experienceScore ?? null,
+      motivationScore: r.score?.motivationScore ?? null,
+      riskScore: r.score?.riskScore ?? null,
+      riskFlags: Array.isArray(r.score?.riskFlags)
+        ? (r.score?.riskFlags as string[])
+        : [],
+      lastScoredAt: r.score?.createdAt ? r.score.createdAt.toISOString() : null,
     }));
   }
 
