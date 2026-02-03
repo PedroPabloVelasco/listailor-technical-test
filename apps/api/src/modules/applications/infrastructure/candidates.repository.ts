@@ -33,8 +33,9 @@ export type CandidateDetail = {
     motivationScore: number;
     motivationReason: string;
     riskScore: number;
-    riskFlags: Prisma.JsonValue;
-    createdAt: Date;
+    riskReason: string;
+    riskFlags: string[];
+    createdAt: string;
   } | null;
 };
 
@@ -108,6 +109,7 @@ export class CandidatesRepository {
             motivationScore: true,
             motivationReason: true,
             riskScore: true,
+            riskReason: true,
             riskFlags: true,
             createdAt: true,
           },
@@ -133,7 +135,10 @@ export class CandidatesRepository {
             motivationScore: row.score.motivationScore,
             motivationReason: row.score.motivationReason,
             riskScore: row.score.riskScore,
-            riskFlags: row.score.riskFlags,
+            riskReason: row.score.riskReason,
+            riskFlags: Array.isArray(row.score.riskFlags)
+              ? (row.score.riskFlags as string[])
+              : [],
             createdAt: row.score.createdAt.toISOString(),
           }
         : null,

@@ -136,6 +136,7 @@ model CandidateScore {
   motivationReason String
 
   riskScore        Int
+  riskReason       String
   riskFlags        Json
 
   finalScore     Float
