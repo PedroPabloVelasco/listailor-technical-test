@@ -283,7 +283,7 @@ export function CandidateDetailDialog({
                       <span className="text-4xl font-bold text-slate-900">
                         {finalScore === null ? '—' : finalScore.toFixed(2)}
                       </span>
-                      <span className="text-sm text-slate-500">/ 100</span>
+                      <span className="text-sm text-slate-500">/ 5</span>
                     </div>
                     {scoreItems ? (
                       <div className="mt-4 space-y-3">
