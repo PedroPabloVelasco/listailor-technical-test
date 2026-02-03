@@ -34,9 +34,8 @@ export function CallbackClient() {
 
         setStatus('success');
         setTimeout(() => {
-          router.refresh();
-          router.push('/jobs');
-        }, 1500);
+          window.location.href = '/jobs';
+        }, 3000);
       } catch (error) {
         setStatus('error');
         setErrorMessage((error as Error).message);
