@@ -562,7 +562,7 @@ async function scoreCandidate(candidateId: number): Promise<NormalizedScore> {
               disabled={scoreAllLoading || bulkLoading || summary.unscored === 0}
               className="rounded-2xl border border-emerald-200 bg-emerald-600/90 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
             >
-              {scoreAllLoading ? 'Calificando todo…' : `Score a todos (${summary.unscored})`}
+              {scoreAllLoading ? 'Calificando todo…' : `Score a todos los pendientes (${summary.unscored})`}
             </button>
           </div>
         </div>
