@@ -1,8 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-// Este endpoint ya no se usa - ver page.tsx para el flujo de autenticación
-// Se mantiene solo por compatibilidad legacy
 
 async function exchangeToken(token: string) {
   const baseUrl = process.env.API_BASE_URL;
